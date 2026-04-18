@@ -67,6 +67,82 @@ const columns = [
   }
 ]
 
+// --- XL Slideover ---
+const isXl = ref(false)
+onMounted(() => {
+  const mq = window.matchMedia('(min-width: 1280px)')
+  isXl.value = mq.matches
+  mq.addEventListener('change', e => isXl.value = e.matches)
+})
+
+const slideOpen = ref(false)
+const selectedId = ref<number | null>(null)
+
+const { data: tradeDetail, pending: detailPending, execute: fetchDetail } = useFetch(
+  () => `/api/sipri/trade/${selectedId.value}`,
+  { immediate: false, lazy: true, default: () => null }
+)
+
+watch(selectedId, (id) => {
+  if (id) fetchDetail()
+})
+
+function onRowSelect(e: Event, row: any) {
+  if (isXl.value) {
+    selectedId.value = row.original.id
+    slideOpen.value = true
+  } else {
+    navigateTo(`/trade/${row.original.id}?fromPage=${page}&fromPageSize=${pageSize}&fromSearch=${encodeURIComponent(search)}&fromSearchField=${searchField}`)
+  }
+}
+
+function closeSlideover() {
+  slideOpen.value = false
+}
+
+function row(label: string, value: string | number | undefined | null) {
+  return { label, value: value || '—' }
+}
+
+const slideoverWeapon = computed(() => {
+  if (!tradeDetail.value) return []
+  const t = tradeDetail.value
+  return [
+    row('Category', t.armamentCategoryName),
+    row('Weapon Name', t.armamentName),
+    row('Description', t.armamentDescription),
+    row('Alt. Designation', t.armamentDesignation2),
+    row('Alt. Designation 2', t.armamentDesignation3),
+    row('Producer', t.armamentProducerCompany),
+    row('Producer Country', t.armamentProductionCountry)
+  ]
+})
+
+const slideoverTransfer = computed(() => {
+  if (!tradeDetail.value) return []
+  const t = tradeDetail.value
+  return [
+    row('Supplier', `${t.sellerCountry} (${t.sellerCountryCode})`),
+    row('Recipient', `${t.buyerCountry} (${t.buyerCountryCode})`),
+    row('Order Year', t.orderDate),
+    row('Units', t.unitsOrdered),
+    row('Status', statusLabels[t.status1] ?? t.status1),
+    row('TIV', t.armamentSipriEstimate),
+    row('Delivery Year', t.deliveryCompletionYear)
+  ]
+})
+
+const slideoverMeta = computed(() => {
+  if (!tradeDetail.value) return []
+  const t = tradeDetail.value
+  return [
+    row('Comment', t.externalComment),
+    row('Created', t.CreatedOn ? new Date(t.CreatedOn).toLocaleString('en-GB', { hour12: false }) + ' ' + tzLabel.value : undefined),
+    row('Last Updated', t.UpdatedOn ? new Date(t.UpdatedOn).toLocaleString('en-GB', { hour12: false }) + ' ' + tzLabel.value : undefined)
+  ].filter(m => m.value !== '—' || m.label === 'Last Updated')
+})
+
+// --- Pagination ---
 const totalPages = computed(() => Math.ceil((data.value?.total ?? 0) / pageSize.value))
 
 const visiblePages = computed(() => {
@@ -121,7 +197,7 @@ watch(sorting, () => {
         v-model="searchField"
         :items="['Designation', 'Description']"
         size="lg"
-        class="w-40"
+        class="w-36"
       />
       <UInput
         v-model="searchInput"
@@ -141,7 +217,7 @@ watch(sorting, () => {
         :columns="columns"
         v-model:sorting="sorting"
         :sorting-options="{ manualSorting: true }"
-        :on-select="(e, row) => navigateTo(`/trade/${row.original.id}?fromPage=${page}&fromPageSize=${pageSize}&fromSearch=${encodeURIComponent(search)}&fromSearchField=${searchField}`)"
+        :on-select="onRowSelect"
       />
 
       <div class="flex flex-col sm:flex-row items-center justify-between pt-4 gap-4">
@@ -210,4 +286,96 @@ watch(sorting, () => {
       </div>
     </template>
   </div>
+
+  <!-- XL Slideover -->
+  <USlideover
+    v-model:open="slideOpen"
+    side="right"
+    :title="detailPending ? 'Loading...' : tradeDetail?.armamentDesignation"
+    :description="detailPending ? 'Loading...' : tradeDetail?.armamentDescription"
+    @after:leave=""
+  >
+    <template #body="{ close }">
+      <!-- Skeleton loading -->
+      <div v-if="detailPending" class="space-y-6 p-4">
+        <div class="space-y-3">
+          <USkeleton class="h-4 w-20" />
+          <USkeleton class="h-4 w-full" />
+          <USkeleton class="h-4 w-3/4" />
+          <USkeleton class="h-4 w-full" />
+          <USkeleton class="h-4 w-2/3" />
+        </div>
+        <div class="space-y-3">
+          <USkeleton class="h-4 w-20" />
+          <USkeleton class="h-4 w-full" />
+          <USkeleton class="h-4 w-3/4" />
+          <USkeleton class="h-4 w-full" />
+          <USkeleton class="h-4 w-2/3" />
+        </div>
+      </div>
+
+      <!-- Content -->
+      <div v-else-if="tradeDetail" class="space-y-4 p-4">
+        <!-- Weapon card -->
+        <div class="border rounded-lg">
+          <div class="px-4 py-2 border-b rounded-t-lg bg-gray-50 dark:bg-gray-800/50">
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500">Weapon</h3>
+          </div>
+          <div class="divide-y divide-gray-300 text-sm">
+            <div v-for="item in slideoverWeapon" :key="item.label" class="flex justify-between gap-3 px-4 py-2">
+              <span class="text-gray-500 shrink-0">{{ item.label }}</span>
+              <span class="font-medium text-right">{{ item.value }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Transfer card -->
+        <div class="border rounded-lg">
+          <div class="px-4 py-2 border-b rounded-t-lg bg-gray-50 dark:bg-gray-800/50">
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500">Transfer</h3>
+          </div>
+          <div class="divide-y divide-gray-300 text-sm">
+            <div v-for="item in slideoverTransfer" :key="item.label" class="flex justify-between gap-3 px-4 py-2">
+              <span class="text-gray-500 shrink-0">{{ item.label }}</span>
+              <span class="font-medium text-right">{{ item.value }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Deliveries -->
+        <div v-if="tradeDetail.deliveries.length" class="border rounded-lg">
+          <div class="px-4 py-2 border-b rounded-t-lg bg-gray-50 dark:bg-gray-800/50">
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500">Deliveries</h3>
+          </div>
+          <UTable
+            :data="tradeDetail.deliveries"
+            :columns="[
+              { id: 'year', header: 'Year', accessorKey: 'year' },
+              { id: 'units', header: 'Units', accessorKey: 'units' }
+            ]"
+          />
+        </div>
+
+        <!-- Meta -->
+        <div v-if="slideoverMeta.length" class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-400 px-1">
+          <template v-for="item in slideoverMeta" :key="item.label">
+            <span v-if="item.value !== '—'">
+              {{ item.label }}: <span class="text-gray-500 font-medium">{{ item.value }}</span>
+            </span>
+          </template>
+        </div>
+
+        <!-- View full detail link -->
+        <UButton
+          variant="outline"
+          size="sm"
+          block
+          icon="i-lucide-external-link"
+          :to="`/trade/${tradeDetail.EntityId}?fromPage=${page}&fromPageSize=${pageSize}&fromSearch=${encodeURIComponent(search)}&fromSearchField=${searchField}`"
+        >
+          View Full Details
+        </UButton>
+      </div>
+    </template>
+  </USlideover>
 </template>
