@@ -2,8 +2,14 @@
 import { h } from 'vue'
 import type { SortingState, HeaderContext } from '@tanstack/vue-table'
 
-const page = ref(0)
-const pageSize = ref(25)
+const route = useRoute()
+const router = useRouter()
+const page = ref(Number(route.query.page) || 0)
+const pageSize = ref(Number(route.query.pageSize) || 25)
+
+if (route.query.page || route.query.pageSize) {
+  router.replace({ path: '/' })
+}
 const sorting = ref<SortingState>([{ id: 'orderYr', desc: true }])
 const searchInput = ref('')
 const search = ref('')
@@ -135,7 +141,7 @@ watch(sorting, () => {
         :columns="columns"
         v-model:sorting="sorting"
         :sorting-options="{ manualSorting: true }"
-        :on-select="(e, row) => navigateTo(`/trade/${row.original.id}`)"
+        :on-select="(e, row) => navigateTo(`/trade/${row.original.id}?fromPage=${page}&fromPageSize=${pageSize}`)"
       />
 
       <div class="flex items-center justify-between pt-4">
