@@ -25,7 +25,7 @@ useSeoMeta({
 
 <template>
   <UApp>
-    <UHeader>
+    <UHeader :toggle="false">
       <template #left>
         <NuxtLink to="/">
           <AppLogo class="w-auto h-6 shrink-0" />
@@ -53,9 +53,14 @@ useSeoMeta({
 
     <UFooter>
       <template #left>
-        <p class="text-sm text-muted">
-          Built with love by <a href="https://github.com/arifineu" target="_blank">arifineu</a> • © {{ new Date().getFullYear() }}
-        </p>
+        <div class="text-sm text-muted space-y-0.5">
+          <p>
+            Data sourced from the <a href="https://armstransfers.sipri.org" target="_blank" rel="noopener noreferrer" class="underline hover:text-gray-700 dark:hover:text-gray-300">SIPRI Arms Transfers Database</a>
+          </p>
+          <p>
+            Built by <a href="https://github.com/arifineu" target="_blank">arifineu</a> © {{ new Date().getFullYear() }}
+          </p>
+        </div>
       </template>
 
       <template #right>
