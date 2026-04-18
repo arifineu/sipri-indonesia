@@ -10,10 +10,20 @@ const statusLabels: Record<string, string> = {
 }
 
 const fromPage = route.query.fromPage || '0'
-const fromPageSize = route.query.fromPageSize || '25'
+const fromPageSize = route.query.fromPageSize || '10'
+const fromSearch = route.query.fromSearch ? String(route.query.fromSearch) : ''
+const fromSearchField = route.query.fromSearchField || 'Designation'
 
-function goBack() {
-  navigateTo(`/?page=${fromPage}&pageSize=${fromPageSize}`)
+const goingBack = ref(false)
+
+async function goBack() {
+  goingBack.value = true
+  const params = new URLSearchParams({ page: fromPage, pageSize: fromPageSize })
+  if (fromSearch) {
+    params.set('search', fromSearch)
+    params.set('searchField', fromSearchField)
+  }
+  await navigateTo(`/?${params}`)
 }
 
 const tzLabel = useTimezoneLabel()
@@ -28,20 +38,14 @@ const { data: trade, pending, error } = await useFetch(`/api/sipri/trade/${id}`,
 const newsQuery = computed(() => {
   if (!trade.value) return ''
   const t = trade.value
-
-  const parts = [
+  const term = [
+    t.armamentDesignation,
     t.armamentDesignation2,
-    t.externalComment
-  ].filter(v => v && v !== '-' && v !== 'n.a.' && v !== 'benchmark')
+    t.armamentName,
+    t.armamentDescription
+  ].find(v => v && v !== '-' && v !== 'n.a.' && v !== 'benchmark')
 
-  // Fallback to main designation or weapon name
-  if (parts.length === 0) {
-    const fallback = [t.armamentDesignation, t.armamentName, t.armamentDescription]
-      .find(v => v && v !== '-' && v !== 'n.a.')
-    if (fallback) parts.push(fallback)
-  }
-
-  return parts.length > 0 ? `${parts.join(' ')} Indonesia` : ''
+  return term ? `${term} Indonesia` : ''
 })
 
 const deliveryCutoff = computed(() => {
@@ -115,7 +119,7 @@ const metaInfo = computed(() => {
 
 <template>
   <div class="p-6 max-w-7xl mx-auto space-y-6">
-    <UButton variant="outline" size="sm" icon="i-lucide-arrow-left" @click="goBack()">
+    <UButton variant="outline" size="sm" :icon="goingBack ? 'i-lucide-loader-2' : 'i-lucide-arrow-left'" :loading="goingBack" @click="goBack()">
       Back
     </UButton>
 
