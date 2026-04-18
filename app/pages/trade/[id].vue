@@ -28,23 +28,40 @@ const { data: trade, pending, error } = await useFetch(`/api/sipri/trade/${id}`,
 const newsQuery = computed(() => {
   if (!trade.value) return ''
   const t = trade.value
-  const terms = [
-    t.armamentDesignation,
+
+  const parts = [
     t.armamentDesignation2,
-    t.armamentDesignation3,
-    t.armamentName,
     t.externalComment
   ].filter(v => v && v !== '-' && v !== 'n.a.' && v !== 'benchmark')
 
-  const searchTerms = terms.length > 0 ? terms[0] : t.armamentDescription
-  return `Indonesia ${searchTerms}`
+  // Fallback to main designation or weapon name
+  if (parts.length === 0) {
+    const fallback = [t.armamentDesignation, t.armamentName, t.armamentDescription]
+      .find(v => v && v !== '-' && v !== 'n.a.')
+    if (fallback) parts.push(fallback)
+  }
+
+  return parts.length > 0 ? `${parts.join(' ')} Indonesia` : ''
 })
 
-const { data: news } = await useFetch('/api/news', {
+const deliveryCutoff = computed(() => {
+  if (!trade.value?.deliveryCompletionYear) return null
+  return trade.value.deliveryCompletionYear
+})
+
+const { data: rawNews } = await useFetch('/api/news', {
   query: { q: newsQuery },
   server: false,
   lazy: true,
   default: () => []
+})
+
+const news = computed(() => {
+  if (!deliveryCutoff.value) return rawNews.value
+  return rawNews.value.filter(item => {
+    if (!item.pubDate) return true
+    return new Date(item.pubDate).getFullYear() <= deliveryCutoff.value!
+  })
 })
 
 useHead(() => ({
