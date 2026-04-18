@@ -5,15 +5,15 @@ import type { SortingState, HeaderContext } from '@tanstack/vue-table'
 const route = useRoute()
 const router = useRouter()
 const page = ref(Number(route.query.page) || 0)
-const pageSize = ref(Number(route.query.pageSize) || 25)
+const pageSize = ref(Number(route.query.pageSize) || 10)
+const searchInput = ref(String(route.query.search || ''))
+const search = ref(String(route.query.search || ''))
+const searchField = ref(String(route.query.searchField || 'Designation'))
 
-if (route.query.page || route.query.pageSize) {
+if (route.query.page || route.query.pageSize || route.query.search || route.query.searchField) {
   router.replace({ path: '/' })
 }
 const sorting = ref<SortingState>([{ id: 'orderYr', desc: true }])
-const searchInput = ref('')
-const search = ref('')
-const searchField = ref('Designation')
 
 const sortField = computed(() => sorting.value[0]?.id || 'orderYr')
 const sortDir = computed(() => sorting.value[0]?.desc ? 'desc' : 'asc')
@@ -108,11 +108,11 @@ watch(sorting, () => {
   <div class="p-6 max-w-7xl mx-auto space-y-6">
     <div>
       <h1 class="text-2xl font-bold">Indonesia Arms Transfers</h1>
-      <div class="flex justify-between gap-4">
-        <p class="text-gray-500 mt-1">
+      <div class="flex justify-between gap-4 mt-2">
+        <p class="text-gray-500">
           SIPRI Arms Transfers Database — {{ data?.total ?? '...' }} records
         </p>
-        <span v-if="lastUpdated" class="text-gray-400 text-right">Last updated: {{ lastUpdated }} {{ tzLabel }}</span>
+        <span v-if="lastUpdated" class="text-gray-400 text-right text-sm">Last updated: {{ lastUpdated }} {{ tzLabel }}</span>
       </div>
     </div>
 
@@ -141,10 +141,10 @@ watch(sorting, () => {
         :columns="columns"
         v-model:sorting="sorting"
         :sorting-options="{ manualSorting: true }"
-        :on-select="(e, row) => navigateTo(`/trade/${row.original.id}?fromPage=${page}&fromPageSize=${pageSize}`)"
+        :on-select="(e, row) => navigateTo(`/trade/${row.original.id}?fromPage=${page}&fromPageSize=${pageSize}&fromSearch=${encodeURIComponent(search)}&fromSearchField=${searchField}`)"
       />
 
-      <div class="flex items-center justify-between pt-4">
+      <div class="flex flex-col sm:flex-row items-center justify-between pt-4 gap-4">
         <div class="flex items-center gap-3 text-sm text-gray-500">
           <span>
             {{ page * pageSize + 1 }}–{{ Math.min((page + 1) * pageSize, data.total) }} of {{ data.total }}
