@@ -10,7 +10,11 @@ const searchInput = ref(String(route.query.search || ''))
 const search = ref(String(route.query.search || ''))
 const searchField = ref(String(route.query.searchField || 'Designation'))
 
-if (route.query.page || route.query.pageSize || route.query.search || route.query.searchField) {
+const supplierCountryId = ref<number | null>(route.query.supplierCountryId ? Number(route.query.supplierCountryId) : null)
+const categoryId = ref<number | null>(route.query.categoryId ? Number(route.query.categoryId) : null)
+const recipientCountryId = ref<number>(route.query.recipientCountryId ? Number(route.query.recipientCountryId) : 1050423)
+
+if (route.query.page || route.query.pageSize || route.query.search || route.query.searchField || route.query.supplierCountryId || route.query.categoryId || route.query.recipientCountryId) {
   router.replace({ path: '/' })
 }
 const sorting = ref<SortingState>([{ id: 'orderYr', desc: true }])
@@ -19,10 +23,38 @@ const sortField = computed(() => sorting.value[0]?.id || 'orderYr')
 const sortDir = computed(() => sorting.value[0]?.desc ? 'desc' : 'asc')
 
 const { data, pending } = await useFetch('/api/sipri/trades', {
-  query: { page, pageSize, sortField, sortDir, search, searchField }
+  query: { page, pageSize, sortField, sortDir, search, searchField, supplierCountryId, recipientCountryId, categoryId }
 })
 
-useHead({ title: 'Indonesia Arms Transfers — SIPRI' })
+const { data: countries } = await useFetch('/api/sipri/countries')
+
+const countryItems = computed(() => {
+  if (!countries.value) return []
+  return countries.value
+    .filter(c => !c.deleted && !c.Name.includes('*') && !c.Name.includes('**') && !c.Name.toLowerCase().includes('unknown') && !c.Name.toLowerCase().includes('test') && c.Name !== '(multiple sellers)')
+    .map(c => ({ label: c.Name, value: c.EntityId }))
+    .sort((a, b) => a.label.localeCompare(b.label))
+})
+
+const { data: supplierItems, pending: supplierPending } = await useFetch('/api/sipri/trades/supplier-countries', {
+  query: { recipientCountryId }
+})
+
+const { data: categoriesData } = await useFetch('/api/sipri/categories')
+const categoryItems = computed(() => {
+  if (!categoriesData.value) return []
+  return categoriesData.value.categories
+    .map((c: { EntityId: number, Name: string }) => ({ label: c.Name, value: c.EntityId }))
+    .sort((a: { label: string }, b: { label: string }) => a.label.localeCompare(b.label))
+})
+
+const selectedCountryName = computed(() => {
+  if (!countries.value) return 'Indonesia'
+  const c = countries.value.find(c => c.EntityId === recipientCountryId.value)
+  return c?.Name ?? 'Indonesia'
+})
+
+useHead({ title: computed(() => `${selectedCountryName.value} Arms Transfers — SIPRI`) })
 
 const tzLabel = useTimezoneLabel()
 
@@ -92,7 +124,7 @@ function onRowSelect(e: Event, row: any) {
     selectedId.value = row.original.id
     slideOpen.value = true
   } else {
-    navigateTo(`/trade/${row.original.id}?fromPage=${page}&fromPageSize=${pageSize}&fromSearch=${encodeURIComponent(search)}&fromSearchField=${searchField}`)
+    navigateTo(`/trade/${row.original.id}?fromPage=${page.value}&fromPageSize=${pageSize.value}&fromSearch=${encodeURIComponent(search.value)}&fromSearchField=${searchField.value}${supplierCountryId.value ? `&fromSupplierCountryId=${supplierCountryId.value}` : ''}${categoryId.value ? `&fromCategoryId=${categoryId.value}` : ''}`)
   }
 }
 
@@ -178,12 +210,35 @@ watch(searchField, () => {
 watch(sorting, () => {
   page.value = 0
 })
+
+watch(supplierCountryId, () => {
+  page.value = 0
+})
+
+watch(categoryId, () => {
+  page.value = 0
+})
+
+watch(recipientCountryId, () => {
+  page.value = 0
+})
 </script>
 
 <template>
   <div class="p-6 max-w-7xl mx-auto space-y-6">
     <div>
-      <h1 class="text-2xl font-bold">Indonesia Arms Transfers</h1>
+      <div class="flex items-center gap-2">
+        <h1 class="text-2xl font-bold">{{ selectedCountryName }} Arms Transfers</h1>
+        <USelectMenu
+          v-model="recipientCountryId"
+          :items="countryItems"
+          placeholder="Change country"
+          searchable
+          size="xs"
+          value-key="value"
+          :clear="false"
+        />
+      </div>
       <div class="flex justify-between gap-4 mt-2">
         <p class="text-gray-500">
           SIPRI Arms Transfers Database — {{ data?.total ?? '...' }} records
@@ -206,6 +261,32 @@ watch(sorting, () => {
         size="lg"
         class="flex-1"
         @input="onSearchInput"
+      />
+    </div>
+
+    <div class="flex gap-2">
+      <USkeleton v-if="supplierPending" class="h-9 w-48 rounded-md" />
+      <USelectMenu
+        v-else
+        v-model="supplierCountryId"
+        :items="supplierItems ?? []"
+        placeholder="Filter countries"
+        searchable
+        size="lg"
+        value-key="value"
+        :clear="true"
+        class="w-full md:w-52"
+      />
+
+      <USelectMenu
+        v-model="categoryId"
+        :items="categoryItems"
+        placeholder="Filter categories"
+        searchable
+        size="lg"
+        value-key="value"
+        :clear="true"
+        class="w-full md:w-52"
       />
     </div>
 
@@ -371,7 +452,7 @@ watch(sorting, () => {
           size="sm"
           block
           icon="i-lucide-external-link"
-          :to="`/trade/${tradeDetail.EntityId}?fromPage=${page}&fromPageSize=${pageSize}&fromSearch=${encodeURIComponent(search)}&fromSearchField=${searchField}`"
+          :to="`/trade/${tradeDetail.EntityId}?fromPage=${page}&fromPageSize=${pageSize}&fromSearch=${encodeURIComponent(search)}&fromSearchField=${searchField}${supplierCountryId ? `&fromSupplierCountryId=${supplierCountryId}` : ''}${categoryId ? `&fromCategoryId=${categoryId}` : ''}`"
         >
           View Full Details
         </UButton>
