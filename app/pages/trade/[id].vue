@@ -13,6 +13,7 @@ const fromPage = route.query.fromPage || '0'
 const fromPageSize = route.query.fromPageSize || '10'
 const fromSearch = route.query.fromSearch ? String(route.query.fromSearch) : ''
 const fromSearchField = route.query.fromSearchField || 'Designation'
+const fromSupplierCountryId = route.query.fromSupplierCountryId || ''
 
 const goingBack = ref(false)
 
@@ -22,6 +23,9 @@ async function goBack() {
   if (fromSearch) {
     params.set('search', fromSearch)
     params.set('searchField', fromSearchField)
+  }
+  if (fromSupplierCountryId) {
+    params.set('supplierCountryId', fromSupplierCountryId)
   }
   await navigateTo(`/?${params}`)
 }
