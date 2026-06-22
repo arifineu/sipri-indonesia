@@ -12,7 +12,7 @@ const searchField = ref(String(route.query.searchField || 'Designation'))
 
 const supplierCountryId = ref<number | null>(route.query.supplierCountryId ? Number(route.query.supplierCountryId) : null)
 const categoryId = ref<number | null>(route.query.categoryId ? Number(route.query.categoryId) : null)
-const recipientCountryId = ref<number>(route.query.recipientCountryId ? Number(route.query.recipientCountryId) : 1050423)
+const recipientCountryId = ref<number>(route.query.recipientCountryId ? Number(route.query.recipientCountryId) : 1150592)
 
 if (route.query.page || route.query.pageSize || route.query.search || route.query.searchField || route.query.supplierCountryId || route.query.categoryId || route.query.recipientCountryId) {
   router.replace({ path: '/' })
@@ -26,7 +26,11 @@ const { data, pending } = await useFetch('/api/sipri/trades', {
   query: { page, pageSize, sortField, sortDir, search, searchField, supplierCountryId, recipientCountryId, categoryId }
 })
 
-const { data: countries } = await useFetch('/api/sipri/countries')
+const { data: countries } = await useReferenceData(
+  'countries',
+  () => $fetch('/api/sipri/countries'),
+  86_400_000
+)
 
 const countryItems = computed(() => {
   if (!countries.value) return []
@@ -37,10 +41,15 @@ const countryItems = computed(() => {
 })
 
 const { data: supplierItems, pending: supplierPending } = await useFetch('/api/sipri/trades/supplier-countries', {
-  query: { recipientCountryId }
+  query: { recipientCountryId },
+  default: () => []
 })
 
-const { data: categoriesData } = await useFetch('/api/sipri/categories')
+const { data: categoriesData } = await useReferenceData(
+  'categories',
+  () => $fetch('/api/sipri/categories'),
+  86_400_000
+)
 const categoryItems = computed(() => {
   if (!categoriesData.value) return []
   return categoriesData.value.categories
@@ -203,6 +212,48 @@ function onSearchInput() {
   }, 300)
 }
 
+// --- Search history ---
+const { history, addSearch, removeSearch, clearHistory } = useSearchHistory()
+const showHistory = ref(false)
+const searchWrapper = ref<HTMLElement | null>(null)
+
+const filteredHistory = computed(() => {
+  const q = searchInput.value.trim().toLowerCase()
+  if (!q) return history.value
+  return history.value.filter(h => h.query.toLowerCase().includes(q))
+})
+
+function applyHistory(item: SearchHistoryEntry) {
+  searchInput.value = item.query
+  searchField.value = item.field
+  search.value = item.query
+  showHistory.value = false
+  page.value = 0
+}
+
+function commitSearch() {
+  const q = searchInput.value.trim()
+  if (q) addSearch(q, searchField.value)
+}
+
+function onInputBlur() {
+  showHistory.value = false
+}
+
+function onClickOutside(e: MouseEvent) {
+  if (searchWrapper.value && !searchWrapper.value.contains(e.target as Node)) {
+    showHistory.value = false
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('mousedown', onClickOutside)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('mousedown', onClickOutside)
+})
+
 watch(searchField, () => {
   if (search.value) page.value = 0
 })
@@ -228,7 +279,9 @@ watch(recipientCountryId, () => {
   <div class="p-6 max-w-7xl mx-auto space-y-6">
     <div>
       <div class="flex items-center gap-2">
-        <h1 class="text-2xl font-bold">{{ selectedCountryName }} Arms Transfers</h1>
+        <h1 class="text-2xl font-bold">
+          {{ selectedCountryName }} Arms Transfers
+        </h1>
         <USelectMenu
           v-model="recipientCountryId"
           :items="countryItems"
@@ -243,7 +296,10 @@ watch(recipientCountryId, () => {
         <p class="text-gray-500">
           SIPRI Arms Transfers Database — {{ data?.total ?? '...' }} records
         </p>
-        <span v-if="lastUpdated" class="text-gray-400 text-right text-sm">Last updated: {{ lastUpdated }} {{ tzLabel }}</span>
+        <span
+          v-if="lastUpdated"
+          class="text-gray-400 text-right text-sm"
+        >Last updated: {{ lastUpdated }} {{ tzLabel }}</span>
       </div>
     </div>
 
@@ -254,23 +310,63 @@ watch(recipientCountryId, () => {
         size="lg"
         class="w-36"
       />
-      <UInput
-        v-model="searchInput"
-        placeholder="Search..."
-        icon="i-lucide-search"
-        size="lg"
-        class="flex-1"
-        @input="onSearchInput"
-      />
+      <div
+        ref="searchWrapper"
+        class="relative flex-1"
+      >
+        <UInput
+          v-model="searchInput"
+          placeholder="Search..."
+          icon="i-lucide-search"
+          size="lg"
+          class="w-full"
+          @input="onSearchInput"
+          @focus="showHistory = true"
+          @blur="onInputBlur"
+          @keyup.enter="commitSearch"
+        />
+        <div
+          v-if="showHistory && filteredHistory.length"
+          class="absolute z-50 top-full left-0 right-0 mt-1 bg-white dark:bg-gray-900 border rounded-md shadow-lg max-h-72 overflow-auto"
+        >
+          <button
+            v-for="item in filteredHistory"
+            :key="item.id"
+            type="button"
+            class="w-full flex items-center justify-between gap-2 px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 text-left text-sm"
+            @mousedown.prevent="applyHistory(item)"
+          >
+            <span class="truncate">
+              <span class="text-gray-400 text-xs mr-2">[{{ item.field }}]</span>{{ item.query }}
+            </span>
+            <UIcon
+              name="i-lucide-x"
+              class="text-gray-400 hover:text-red-500 shrink-0"
+              @mousedown.prevent.stop="removeSearch(item.id!)"
+            />
+          </button>
+          <div class="border-t px-3 py-2 text-center">
+            <UButton
+              variant="ghost"
+              size="xs"
+              label="Clear all"
+              @mousedown.prevent="clearHistory"
+            />
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="flex gap-2">
-      <USkeleton v-if="supplierPending" class="h-9 w-48 rounded-md" />
+      <USkeleton
+        v-if="supplierPending"
+        class="h-9 w-48 rounded-md"
+      />
       <USelectMenu
         v-else
         v-model="supplierCountryId"
         :items="supplierItems ?? []"
-        placeholder="Filter countries"
+        placeholder="Filter supplier countries"
         searchable
         size="lg"
         value-key="value"
@@ -290,13 +386,18 @@ watch(recipientCountryId, () => {
       />
     </div>
 
-    <div v-if="pending" class="text-gray-400 py-8 text-center">Loading...</div>
+    <div
+      v-if="pending"
+      class="text-gray-400 py-8 text-center"
+    >
+      Loading...
+    </div>
 
     <template v-else-if="data">
       <UTable
+        v-model:sorting="sorting"
         :data="data.trades"
         :columns="columns"
-        v-model:sorting="sorting"
         :sorting-options="{ manualSorting: true }"
         :on-select="onRowSelect"
       />
@@ -310,10 +411,10 @@ watch(recipientCountryId, () => {
             <span>Show</span>
             <USelect
               :model-value="String(pageSize)"
-              @update:model-value="pageSize = Number($event); page = 0"
               :items="['10', '25', '50', '100']"
               size="xs"
               class="w-18"
+              @update:model-value="pageSize = Number($event); page = 0"
             />
             <span>per page</span>
           </div>
@@ -333,7 +434,10 @@ watch(recipientCountryId, () => {
             icon="i-lucide-chevron-left"
             @click="page--"
           />
-          <template v-for="p in visiblePages" :key="p">
+          <template
+            v-for="p in visiblePages"
+            :key="p"
+          >
             <UButton
               v-if="p === '...'"
               variant="outline"
@@ -378,7 +482,10 @@ watch(recipientCountryId, () => {
   >
     <template #body="{ close }">
       <!-- Skeleton loading -->
-      <div v-if="detailPending" class="space-y-6 p-4">
+      <div
+        v-if="detailPending"
+        class="space-y-6 p-4"
+      >
         <div class="space-y-3">
           <USkeleton class="h-4 w-20" />
           <USkeleton class="h-4 w-full" />
@@ -396,14 +503,23 @@ watch(recipientCountryId, () => {
       </div>
 
       <!-- Content -->
-      <div v-else-if="tradeDetail" class="space-y-4 p-4">
+      <div
+        v-else-if="tradeDetail"
+        class="space-y-4 p-4"
+      >
         <!-- Weapon card -->
         <div class="border rounded-lg">
           <div class="px-4 py-2 border-b rounded-t-lg bg-gray-50 dark:bg-gray-800/50">
-            <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500">Weapon</h3>
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500">
+              Weapon
+            </h3>
           </div>
           <div class="divide-y divide-gray-300 text-sm">
-            <div v-for="item in slideoverWeapon" :key="item.label" class="flex justify-between gap-3 px-4 py-2">
+            <div
+              v-for="item in slideoverWeapon"
+              :key="item.label"
+              class="flex justify-between gap-3 px-4 py-2"
+            >
               <span class="text-gray-500 shrink-0">{{ item.label }}</span>
               <span class="font-medium text-right">{{ item.value }}</span>
             </div>
@@ -413,10 +529,16 @@ watch(recipientCountryId, () => {
         <!-- Transfer card -->
         <div class="border rounded-lg">
           <div class="px-4 py-2 border-b rounded-t-lg bg-gray-50 dark:bg-gray-800/50">
-            <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500">Transfer</h3>
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500">
+              Transfer
+            </h3>
           </div>
           <div class="divide-y divide-gray-300 text-sm">
-            <div v-for="item in slideoverTransfer" :key="item.label" class="flex justify-between gap-3 px-4 py-2">
+            <div
+              v-for="item in slideoverTransfer"
+              :key="item.label"
+              class="flex justify-between gap-3 px-4 py-2"
+            >
               <span class="text-gray-500 shrink-0">{{ item.label }}</span>
               <span class="font-medium text-right">{{ item.value }}</span>
             </div>
@@ -424,9 +546,14 @@ watch(recipientCountryId, () => {
         </div>
 
         <!-- Deliveries -->
-        <div v-if="tradeDetail.deliveries.length" class="border rounded-lg">
+        <div
+          v-if="tradeDetail.deliveries.length"
+          class="border rounded-lg"
+        >
           <div class="px-4 py-2 border-b rounded-t-lg bg-gray-50 dark:bg-gray-800/50">
-            <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500">Deliveries</h3>
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500">
+              Deliveries
+            </h3>
           </div>
           <UTable
             :data="tradeDetail.deliveries"
@@ -438,8 +565,14 @@ watch(recipientCountryId, () => {
         </div>
 
         <!-- Meta -->
-        <div v-if="slideoverMeta.length" class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-400 px-1">
-          <template v-for="item in slideoverMeta" :key="item.label">
+        <div
+          v-if="slideoverMeta.length"
+          class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-400 px-1"
+        >
+          <template
+            v-for="item in slideoverMeta"
+            :key="item.label"
+          >
             <span v-if="item.value !== '—'">
               {{ item.label }}: <span class="text-gray-500 font-medium">{{ item.value }}</span>
             </span>
