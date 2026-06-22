@@ -1,8 +1,11 @@
-import type { SearchFilter } from '~/server/types/sipri'
+import type { SearchFilter, TradeSearchResult } from '~/server/types/sipri'
+
+const FETCH_PAGE_SIZE = 100
+const PARALLEL_BATCH = 6
 
 export default defineEventHandler(async (event) => {
   const query = getQuery(event)
-  const recipientCountryId = query.recipientCountryId ? Number(query.recipientCountryId) : 1050423
+  const recipientCountryId = query.recipientCountryId ? Number(query.recipientCountryId) : 1150592
 
   const filters: SearchFilter[] = [
     {
@@ -16,7 +19,19 @@ export default defineEventHandler(async (event) => {
   ]
 
   const total = await searchTradesCount(filters, 'AND')
-  const allTrades = await searchTrades(filters, 'AND', 0, total, {})
+  const pages = Math.ceil(total / FETCH_PAGE_SIZE)
+  const allTrades: TradeSearchResult[] = []
+  // Fire requests in parallel batches to avoid sequential round-trip latency.
+  for (let i = 0; i < pages; i += PARALLEL_BATCH) {
+    const slice = Array.from(
+      { length: Math.min(PARALLEL_BATCH, pages - i) },
+      (_, j) => searchTrades(filters, 'AND', i + j, FETCH_PAGE_SIZE, {})
+    )
+    const results = await Promise.all(slice)
+    for (const batch of results) {
+      allTrades.push(...batch)
+    }
+  }
 
   const sellerNames = [...new Set(allTrades.map(t => t.seller))]
 
@@ -29,7 +44,7 @@ export default defineEventHandler(async (event) => {
 
   const items = sellerNames
     .filter(name => validNames.has(name))
-    .map(name => {
+    .map((name) => {
       const country = countries.find(c => c.Name === name)!
       return { label: name, value: country.EntityId }
     })
