@@ -17,7 +17,10 @@ export default defineNuxtConfig({
   },
 
   routeRules: {
-    '/': { swr: 3600 }
+    '/': { swr: 3600 },
+    '/api/sipri/countries': { swr: 86400 },
+    '/api/sipri/categories': { swr: 86400 },
+    '/api/sipri/trades/supplier-countries': { swr: 3600 }
   },
 
   compatibilityDate: '2025-01-15',
