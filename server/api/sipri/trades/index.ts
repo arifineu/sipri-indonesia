@@ -10,7 +10,7 @@ export default defineEventHandler(async (event) => {
   const searchField = String(query.searchField || 'Designation')
   const supplierCountryId = query.supplierCountryId ? Number(query.supplierCountryId) : null
   const categoryId = query.categoryId ? Number(query.categoryId) : null
-  const recipientCountryId = query.recipientCountryId ? Number(query.recipientCountryId) : 1050423
+  const recipientCountryId = query.recipientCountryId ? Number(query.recipientCountryId) : 1150592
 
   const filters: SearchFilter[] = [
     {
